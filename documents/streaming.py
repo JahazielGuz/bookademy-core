@@ -19,7 +19,7 @@ import json
 import time
 from collections.abc import Iterator
 
-from django.db import close_old_connections
+from django.db import close_old_connections, connection
 
 from documents.models import Document, GenerationEvent
 
@@ -46,8 +46,6 @@ def stream(document_id: int, since: int) -> Iterator[str]:
     last_beat = started
 
     while time.monotonic() - started < MAX_LIFETIME_SECONDS:
-        close_old_connections()
-
         new = list(
             GenerationEvent.objects.filter(document_id=document_id, id__gt=last).order_by("id")
         )
@@ -71,3 +69,10 @@ def stream(document_id: int, since: int) -> Iterator[str]:
             last_beat = now
 
         time.sleep(POLL_SECONDS)
+
+        # Recycle the connection only between polls: a streaming response outlives
+        # its request and must not sit on a stale one. Never inside a transaction —
+        # under test the whole stream runs in one, and closing it there drops the
+        # connection the test itself is using.
+        if not connection.in_atomic_block:
+            close_old_connections()
