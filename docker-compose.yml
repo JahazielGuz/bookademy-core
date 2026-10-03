@@ -1,0 +1,24 @@
+# Postgres and Redis for local development. The apps themselves run on the host.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: bookademy
+      POSTGRES_PASSWORD: bookademy
+      POSTGRES_DB: bookademy
+    ports:
+      - "5434:5432"
+    volumes:
+      - bookademy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookademy"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  bookademy-pgdata:
