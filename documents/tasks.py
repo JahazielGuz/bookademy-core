@@ -81,8 +81,10 @@ def _prepare(document: Document):
 
     if not data["has_outline"]:
         raise NoOutline(
-            "This PDF has no table of contents to read its chapters from. "
-            "Books exported without bookmarks are not supported yet."
+            "This PDF has no table of contents, so its chapters cannot be read. "
+            "Look for a chapter list in your PDF reader's sidebar — if there isn't "
+            "one, the file is most likely a scan. A publisher's original PDF of the "
+            "same book will usually work."
         )
 
     document.pages = data["pages"]
