@@ -45,7 +45,6 @@ def course(learner):
         title="Learning Python",
         file="documents/learning-python.pdf",
         page_count=120,
-        ai_file_id="file_test",
         status=Document.Status.READY,
     )
     syllabus = Syllabus.objects.create(

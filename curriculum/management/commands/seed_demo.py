@@ -127,7 +127,6 @@ class Command(BaseCommand):
             title="Learning Python",
             file="documents/demo/learning-python.pdf",
             page_count=284,
-            ai_file_id="file_demo",
             status=Document.Status.READY,
         )
         syllabus = Syllabus.objects.create(

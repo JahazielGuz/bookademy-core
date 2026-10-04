@@ -7,4 +7,6 @@ from documents.models import Document
 class DocumentAdmin(admin.ModelAdmin):
     list_display = ["title", "owner", "status", "page_count", "created_at"]
     list_filter = ["status"]
-    readonly_fields = ["ai_file_id", "page_count"]
+    # The extracted text is large and not useful to edit by hand.
+    exclude = ["pages"]
+    readonly_fields = ["page_count"]
