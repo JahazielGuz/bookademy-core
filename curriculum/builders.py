@@ -19,43 +19,54 @@ from curriculum.models import (
 from documents.models import Document
 
 
-def save_syllabus(document: Document, outline: dict[str, Any]) -> Syllabus:
-    """Replace any previous syllabus for this document.
+def save_structure(document: Document, data: dict[str, Any], language: str) -> Syllabus:
+    """Create the syllabus and its chapters from the document's own structure.
 
-    Regenerating is destructive by design: the chapters change, so the old topics'
-    progress rows no longer point at anything a learner would recognise.
+    No model produced any of this: the chapters, their titles and their page ranges
+    come from the PDF's bookmarks. Topics are not created here — each chapter's are
+    worked out when that chapter is reached.
     """
     Syllabus.objects.filter(document=document).delete()
 
+    chapters = data["chapters"]
     syllabus = Syllabus.objects.create(
         document=document,
-        title=outline["title"],
-        subject=outline["subject"],
-        description=outline["description"],
-        language=outline["language"],
+        title=document.title,
+        subject="",
+        description=f"{len(chapters)} chapters over {data['page_count']} pages.",
+        language=language,
     )
 
-    for chapter_data in outline["chapters"]:
-        chapter = Chapter.objects.create(
+    for chapter in chapters:
+        Chapter.objects.create(
             syllabus=syllabus,
-            number=chapter_data["number"],
-            title=chapter_data["title"],
-            summary=chapter_data["summary"],
-            page_start=chapter_data["page_start"],
-            page_end=chapter_data["page_end"],
+            number=chapter["number"],
+            title=chapter["title"],
+            summary="",
+            page_start=chapter["page_start"],
+            page_end=chapter["page_end"],
+            headings=chapter["headings"],
         )
-        for position, topic_data in enumerate(chapter_data["topics"], start=1):
-            Topic.objects.create(
-                chapter=chapter,
-                position=position,
-                title=topic_data["title"],
-                summary=topic_data["summary"],
-                key_points=topic_data["key_points"],
-                page_start=topic_data["page_start"],
-                page_end=topic_data["page_end"],
-            )
 
     return syllabus
+
+
+def save_topics(chapter: Chapter, topics: list[dict[str, Any]]) -> list[Topic]:
+    """Replace this chapter's topics. Safe to call again after a failed attempt."""
+    Topic.objects.filter(chapter=chapter).delete()
+
+    return [
+        Topic.objects.create(
+            chapter=chapter,
+            position=position,
+            title=topic["title"],
+            summary=topic["summary"],
+            key_points=topic["key_points"],
+            page_start=topic["page_start"],
+            page_end=topic["page_end"],
+        )
+        for position, topic in enumerate(topics, start=1)
+    ]
 
 
 def save_topic_content(topic: Topic, content: dict[str, Any]) -> None:

@@ -20,8 +20,10 @@ class Document(models.Model):
     file = models.FileField(upload_to="documents/%Y/%m/")
     page_count = models.PositiveIntegerField(null=True, blank=True)
 
-    # The Anthropic Files API id. Uploaded once, then reused by every topic call.
-    ai_file_id = models.CharField(max_length=128, blank=True)
+    # The document's text, one Markdown string per page. Extracted once, then
+    # sliced per chapter — the PDF itself is never sent to a model, because that
+    # would make it render every page as an image as well as reading the text.
+    pages = models.JSONField(default=list, blank=True)
 
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     error = models.TextField(blank=True)

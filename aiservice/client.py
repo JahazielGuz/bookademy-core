@@ -36,16 +36,14 @@ def _post(path: str, **kwargs: Any) -> dict[str, Any]:
     return response.json()
 
 
-def upload_document(*, filename: str, content: bytes) -> dict[str, Any]:
-    return _post(
-        "/v1/documents",
-        files={"file": (filename, content, "application/pdf")},
-    )
+def read_document(*, filename: str, content: bytes) -> dict[str, Any]:
+    """Structure and per-page text. No model is involved in this call."""
+    return _post("/v1/documents", files={"file": (filename, content, "application/pdf")})
 
 
-def generate_syllabus(*, file_id: str) -> dict[str, Any]:
-    return _post("/v1/syllabus", json={"file_id": file_id})
+def chapter_topics(payload: dict[str, Any]) -> dict[str, Any]:
+    return _post("/v1/chapter-topics", json=payload)
 
 
-def generate_topic_content(payload: dict[str, Any]) -> dict[str, Any]:
+def topic_content(payload: dict[str, Any]) -> dict[str, Any]:
     return _post("/v1/topic-content", json=payload)

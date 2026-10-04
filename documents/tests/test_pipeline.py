@@ -1,4 +1,5 @@
-"""The generation run: ordering, per-chapter completion, and the progress events."""
+"""The generation run: structure from the document, chapters in order, and the
+page-slicing that makes a 600-page book affordable."""
 
 import pytest
 
@@ -6,52 +7,46 @@ from curriculum.models import Chapter, Syllabus, Topic
 from documents.models import Document, GenerationEvent
 from documents.tasks import process_document
 
-OUTLINE = {
-    "title": "Full Stack React",
-    "subject": "React",
-    "description": "Building apps with React.",
-    "language": "javascript",
+# Four pages, each identifiable so the slicing can be asserted.
+PAGES = [
+    "# Getting started\n```js\nconst a = 1\n```",
+    "More of chapter one. UNIQUE_CH1_PAGE2",
+    "# State\n```js\nconst [x, setX] = useState()\n```",
+    "More of chapter two. UNIQUE_CH2_PAGE2",
+]
+
+DOCUMENT = {
+    "page_count": 4,
+    "has_outline": True,
+    "pages": PAGES,
     "chapters": [
         {
             "number": 1,
             "title": "Getting started",
-            "summary": "Setting up.",
             "page_start": 1,
-            "page_end": 20,
-            "topics": [
-                {
-                    "title": "Your first component",
-                    "summary": "Components render markup.",
-                    "key_points": ["Components are functions"],
-                    "page_start": 2,
-                    "page_end": 8,
-                },
-                {
-                    "title": "Props",
-                    "summary": "Passing data down.",
-                    "key_points": ["Props are read-only"],
-                    "page_start": 9,
-                    "page_end": 20,
-                },
-            ],
+            "page_end": 2,
+            "headings": [{"title": "Components", "page_start": 1, "page_end": 2}],
         },
         {
             "number": 2,
             "title": "State",
-            "summary": "State over time.",
-            "page_start": 21,
-            "page_end": 40,
-            "topics": [
-                {
-                    "title": "useState",
-                    "summary": "Local state.",
-                    "key_points": ["State triggers a re-render"],
-                    "page_start": 21,
-                    "page_end": 40,
-                }
-            ],
+            "page_start": 3,
+            "page_end": 4,
+            "headings": [{"title": "useState", "page_start": 3, "page_end": 4}],
         },
     ],
+}
+
+TOPICS = {
+    "topics": [
+        {
+            "title": "A topic",
+            "summary": "It covers a thing.",
+            "key_points": ["A point"],
+            "page_start": 1,
+            "page_end": 2,
+        }
+    ]
 }
 
 CONTENT = {
@@ -88,30 +83,28 @@ CONTENT = {
 
 @pytest.fixture
 def stubbed_ai(monkeypatch):
-    """Stand in for bookademy-ai, and record the order topics were asked for."""
-    asked: list[str] = []
+    """Stand in for bookademy-ai, recording what each call was sent."""
+    sent: dict[str, list] = {"topics": [], "content": []}
 
-    monkeypatch.setattr(
-        "documents.tasks.upload_document",
-        lambda **kwargs: {"file_id": "file_stub", "page_count": 40},
-    )
-    monkeypatch.setattr(
-        "documents.tasks.generate_syllabus", lambda **kwargs: OUTLINE
-    )
+    monkeypatch.setattr("documents.tasks.read_document", lambda **kwargs: DOCUMENT)
 
-    def topic_content(payload):
-        asked.append(payload["topic_title"])
+    def topics(payload):
+        sent["topics"].append(payload)
+        return TOPICS
+
+    def content(payload):
+        sent["content"].append(payload)
         return CONTENT
 
-    monkeypatch.setattr("documents.tasks.request_topic_content", topic_content)
-    return asked
+    monkeypatch.setattr("documents.tasks.chapter_topics", topics)
+    monkeypatch.setattr("documents.tasks.request_topic_content", content)
+    return sent
 
 
 @pytest.fixture
 def uploaded(learner, tmp_path, settings):
     settings.MEDIA_ROOT = tmp_path
-    pdf = tmp_path / "book.pdf"
-    pdf.write_bytes(b"%PDF-1.4 stub")
+    (tmp_path / "book.pdf").write_bytes(b"%PDF-1.4 stub")
     return Document.objects.create(
         owner=learner, title="book", file="book.pdf", status=Document.Status.PENDING
     )
@@ -123,70 +116,80 @@ def test_the_whole_run_completes(uploaded, stubbed_ai):
 
     uploaded.refresh_from_db()
     assert uploaded.status == Document.Status.READY
-    assert uploaded.page_count == 40
-    assert Topic.objects.filter(status=Topic.Status.READY).count() == 3
-    assert Syllabus.objects.get(document=uploaded).title == "Full Stack React"
+    assert uploaded.page_count == 4
+    assert Chapter.objects.count() == 2
+    assert Topic.objects.filter(status=Topic.Status.READY).count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chapters_and_page_ranges_come_from_the_document(uploaded, stubbed_ai):
+    """Not from a model: the titles and ranges must be the book's own."""
+    process_document.apply(args=[uploaded.id])
+
+    chapters = list(Chapter.objects.order_by("number"))
+    assert [c.title for c in chapters] == ["Getting started", "State"]
+    assert (chapters[0].page_start, chapters[0].page_end) == (1, 2)
+    assert (chapters[1].page_start, chapters[1].page_end) == (3, 4)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_each_chapter_is_sent_only_its_own_pages(uploaded, stubbed_ai):
+    """The cost of the whole system rests on this. A topic in chapter 2 must never be
+    sent chapter 1's text."""
+    process_document.apply(args=[uploaded.id])
+
+    first, second = stubbed_ai["topics"]
+    assert "UNIQUE_CH1_PAGE2" in first["text"]
+    assert "UNIQUE_CH2_PAGE2" not in first["text"]
+    assert "UNIQUE_CH2_PAGE2" in second["text"]
+    assert "UNIQUE_CH1_PAGE2" not in second["text"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_pdf_is_ever_sent_to_a_model(uploaded, stubbed_ai):
+    """Every generation call carries extracted text and nothing else."""
+    process_document.apply(args=[uploaded.id])
+
+    for payload in stubbed_ai["topics"] + stubbed_ai["content"]:
+        assert "file_id" not in payload
+        assert isinstance(payload["text"], str)
 
 
 @pytest.mark.django_db(transaction=True)
 def test_chapters_are_written_in_order(uploaded, stubbed_ai):
-    """Chapter 2's topics are not touched until chapter 1's are done, which is what
-    makes "chapter 1 arrives first" true rather than a hope."""
     process_document.apply(args=[uploaded.id])
 
-    assert stubbed_ai[:2] == ["Your first component", "Props"] or stubbed_ai[:2] == [
-        "Props",
-        "Your first component",
-    ]
-    # Whatever order the two topics inside chapter 1 ran in, chapter 2 came last.
-    assert stubbed_ai[2] == "useState"
+    assert [p["chapter_number"] for p in stubbed_ai["topics"]] == [1, 2]
+    assert [p["chapter_number"] for p in stubbed_ai["content"]] == [1, 2]
 
 
 @pytest.mark.django_db(transaction=True)
-def test_each_chapter_is_marked_ready_as_it_finishes(uploaded, stubbed_ai):
+def test_the_language_is_detected_from_the_book(uploaded, stubbed_ai):
     process_document.apply(args=[uploaded.id])
 
-    statuses = list(Chapter.objects.order_by("number").values_list("status", flat=True))
-    assert statuses == [Chapter.Status.READY, Chapter.Status.READY]
+    assert Syllabus.objects.get().language == "javascript"
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_event_log_tells_the_story_in_order(uploaded, stubbed_ai):
-    process_document.apply(args=[uploaded.id])
-
-    kinds = list(
-        GenerationEvent.objects.filter(document=uploaded).values_list("kind", flat=True)
+def test_a_pdf_without_bookmarks_fails_with_a_readable_reason(uploaded, monkeypatch):
+    monkeypatch.setattr(
+        "documents.tasks.read_document",
+        lambda **kwargs: {**DOCUMENT, "has_outline": False, "chapters": []},
     )
-    assert kinds[0] == GenerationEvent.Kind.STARTED
-    assert kinds[1] == GenerationEvent.Kind.UPLOADED
-    assert kinds[2] == GenerationEvent.Kind.SYLLABUS_READY
-    assert kinds[-1] == GenerationEvent.Kind.DONE
 
-    # Chapter 1 is announced and finished before chapter 2 is announced.
-    chapter_events = [
-        (event.kind, event.chapter_number)
-        for event in GenerationEvent.objects.filter(
-            document=uploaded,
-            kind__in=[GenerationEvent.Kind.CHAPTER_STARTED, GenerationEvent.Kind.CHAPTER_READY],
-        )
-    ]
-    assert chapter_events == [
-        (GenerationEvent.Kind.CHAPTER_STARTED, 1),
-        (GenerationEvent.Kind.CHAPTER_READY, 1),
-        (GenerationEvent.Kind.CHAPTER_STARTED, 2),
-        (GenerationEvent.Kind.CHAPTER_READY, 2),
-    ]
+    process_document.apply(args=[uploaded.id])
+
+    uploaded.refresh_from_db()
+    assert uploaded.status == Document.Status.FAILED
+    assert "table of contents" in uploaded.error
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_failed_topic_leaves_its_chapter_incomplete_but_keeps_going(
-    uploaded, stubbed_ai, monkeypatch
-):
-    """One bad topic must not cost the rest of the book."""
+def test_a_failed_topic_does_not_cost_the_rest_of_the_book(uploaded, stubbed_ai, monkeypatch):
     from aiservice.client import AIServiceRefused
 
     def sometimes_refuses(payload):
-        if payload["topic_title"] == "Props":
+        if payload["chapter_number"] == 1:
             raise AIServiceRefused("declined")
         return CONTENT
 
@@ -195,9 +198,25 @@ def test_a_failed_topic_leaves_its_chapter_incomplete_but_keeps_going(
     process_document.apply(args=[uploaded.id])
 
     uploaded.refresh_from_db()
-    # The run still finishes and chapter 2 is untouched by chapter 1's problem.
     assert uploaded.status == Document.Status.READY
     assert Chapter.objects.get(number=1).status == Chapter.Status.FAILED
     assert Chapter.objects.get(number=2).status == Chapter.Status.READY
-    assert Topic.objects.get(title="Props").status == Topic.Status.FAILED
-    assert Topic.objects.get(title="useState").status == Topic.Status.READY
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_event_log_tells_the_story_in_order(uploaded, stubbed_ai):
+    process_document.apply(args=[uploaded.id])
+
+    pairs = [
+        (e.kind, e.chapter_number)
+        for e in GenerationEvent.objects.filter(
+            document=uploaded,
+            kind__in=[GenerationEvent.Kind.CHAPTER_STARTED, GenerationEvent.Kind.CHAPTER_READY],
+        )
+    ]
+    assert pairs == [
+        (GenerationEvent.Kind.CHAPTER_STARTED, 1),
+        (GenerationEvent.Kind.CHAPTER_READY, 1),
+        (GenerationEvent.Kind.CHAPTER_STARTED, 2),
+        (GenerationEvent.Kind.CHAPTER_READY, 2),
+    ]
