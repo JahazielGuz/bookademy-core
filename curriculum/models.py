@@ -44,6 +44,11 @@ class Chapter(models.Model):
     page_end = models.PositiveIntegerField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
 
+    # The book's own section headings for this chapter, kept as candidates for the
+    # topics call. They are a strong prior, not a syllabus: this book carries between
+    # 4 and 54 of them per chapter, so they need merging before they are lessons.
+    headings = models.JSONField(default=list, blank=True)
+
     class Meta:
         ordering = ["number"]
         constraints = [
