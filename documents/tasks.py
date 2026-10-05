@@ -131,16 +131,39 @@ def _prepare(document: Document):
     return syllabus
 
 
-def chapter_text(document: Document, chapter: Chapter) -> str:
-    """The chapter's own pages, sliced from the text extracted once up front.
+# A page either side of a topic, so a sentence or a code listing that straddles the
+# boundary is not cut in half.
+TOPIC_MARGIN_PAGES = 1
 
-    This is what makes a 600-page book affordable: a topic is sent its chapter, not
-    the book.
-    """
+
+def _slice(document: Document, first_page: int, last_page: int) -> str:
     pages = document.pages or []
-    start = max(0, chapter.page_start - 1)
-    end = min(len(pages), chapter.page_end)
+    start = max(0, first_page - 1)
+    end = min(len(pages), last_page)
     return "\n\n".join(pages[start:end])
+
+
+def chapter_text(document: Document, chapter: Chapter) -> str:
+    """The chapter's own pages. Sent once per chapter, to work out its topics."""
+    return _slice(document, chapter.page_start, chapter.page_end)
+
+
+def topic_text(document: Document, topic: Topic) -> str:
+    """The topic's own pages, not its chapter's.
+
+    This is the difference between a book that costs a few dollars and one that costs
+    twenty. A topic covers four or five pages; sending the whole forty-page chapter
+    with it — once per topic, eleven times over — multiplied the input by roughly
+    seven and a half for nothing. The page range has been on the topic since it was
+    created; it just was not being used.
+
+    A page of margin either side keeps a listing that straddles the boundary intact.
+    """
+    return _slice(
+        document,
+        topic.page_start - TOPIC_MARGIN_PAGES,
+        topic.page_end + TOPIC_MARGIN_PAGES,
+    )
 
 
 def _write_chapter(document: Document, chapter: Chapter) -> None:
@@ -180,7 +203,9 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
     total = len(existing)
 
     with ThreadPoolExecutor(max_workers=TOPIC_CONCURRENCY) as pool:
-        results = list(pool.map(lambda topic: _write_topic(topic, text, language), pending))
+        results = list(
+            pool.map(lambda topic: _write_topic(document, topic, language), pending)
+        )
 
     for topic, ok in zip(pending, results):
         if ok:
@@ -196,7 +221,7 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
     _mark_chapter(document, chapter)
 
 
-def _write_topic(topic: Topic, text: str, language: str) -> bool:
+def _write_topic(document: Document, topic: Topic, language: str) -> bool:
     """One topic, in its own thread. Returns whether it succeeded.
 
     Each thread gets its own database connection, so it must hand it back rather than
@@ -215,7 +240,7 @@ def _write_topic(topic: Topic, text: str, language: str) -> bool:
                 "topic_title": topic.title,
                 "topic_summary": topic.summary,
                 "key_points": topic.key_points,
-                "text": text,
+                "text": topic_text(document, topic),
             }
         )
 
