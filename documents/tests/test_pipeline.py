@@ -280,3 +280,61 @@ def test_only_one_chapter_is_in_flight_at_a_time(uploaded, stubbed_ai):
     # Every call for chapter 1 precedes every call for chapter 2.
     assert seen == sorted(seen), f"chapters interleaved: {seen}"
     del original
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_topic_is_sent_its_own_pages_not_its_chapter(uploaded, monkeypatch):
+    """The seven-and-a-half-fold saving, pinned.
+
+    A topic covers a handful of pages. Sending the whole chapter with it, once per
+    topic, is what turned a few dollars into twenty.
+    """
+    wide_pages = [f"PAGE_{n}_CONTENT" for n in range(1, 21)]
+    wide = {
+        "page_count": 20,
+        "has_outline": True,
+        "pages": wide_pages,
+        "chapters": [
+            {
+                "number": 1,
+                "title": "A long chapter",
+                "page_start": 1,
+                "page_end": 20,
+                "headings": [{"title": "A heading", "page_start": 1, "page_end": 20}],
+            }
+        ],
+    }
+    narrow_topic = {
+        "topics": [
+            {
+                "title": "A narrow topic",
+                "summary": "Covers a few pages.",
+                "key_points": ["A point"],
+                "page_start": 10,
+                "page_end": 12,
+            }
+        ]
+    }
+
+    sent = {}
+    monkeypatch.setattr("documents.tasks.read_document", lambda **kwargs: wide)
+    monkeypatch.setattr("documents.tasks.chapter_topics", lambda p: (sent.update(chapter=p), narrow_topic)[1])
+    monkeypatch.setattr("documents.tasks.request_topic_content", lambda p: (sent.update(topic=p), CONTENT)[1])
+
+    process_document.apply(args=[uploaded.id])
+
+    topic_text = sent["topic"]["text"]
+    # Its own pages, plus one of margin either side so a listing is not cut in half.
+    assert "PAGE_10_CONTENT" in topic_text
+    assert "PAGE_12_CONTENT" in topic_text
+    assert "PAGE_9_CONTENT" in topic_text
+    assert "PAGE_13_CONTENT" in topic_text
+    # ...and nothing like the whole chapter.
+    assert "PAGE_1_CONTENT" not in topic_text
+    assert "PAGE_20_CONTENT" not in topic_text
+
+    # The chapter call still gets the whole chapter — it is choosing the topics.
+    assert "PAGE_1_CONTENT" in sent["chapter"]["text"]
+    assert "PAGE_20_CONTENT" in sent["chapter"]["text"]
+
+    assert len(topic_text) < len(sent["chapter"]["text"]) / 2
