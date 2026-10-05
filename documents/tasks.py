@@ -30,7 +30,7 @@ from curriculum.models import Chapter, Topic
 from documents import events
 from documents.language import detect_language
 from documents.locks import document_run, keep_held
-from documents.models import Document
+from documents.models import Document, UsageRecord
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,12 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
                 chapter_number=chapter.number,
             )
             return
+        _record_usage(
+            document,
+            response,
+            kind=UsageRecord.Kind.TOPICS,
+            chapter_number=chapter.number,
+        )
         existing = save_topics(chapter, response["topics"])
 
     events.chapter_started(document, chapter.number, chapter.title, len(existing))
@@ -244,6 +250,14 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
             }
         )
 
+        _record_usage(
+            document,
+            content,
+            kind=UsageRecord.Kind.CONTENT,
+            chapter_number=topic.chapter.number,
+            topic_title=topic.title,
+        )
+
         with transaction.atomic():
             save_topic_content(topic, content)
             topic.status = Topic.Status.READY
@@ -259,6 +273,36 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
         return False
     finally:
         close_old_connections()
+
+
+def _record_usage(
+    document: Document,
+    response: dict,
+    *,
+    kind: str,
+    chapter_number: int | None = None,
+    topic_title: str = "",
+) -> None:
+    """Store what a call consumed, before anything else can fail.
+
+    Written even when the content that came back is later rejected: the call was
+    billed either way, and a total that only counts successes is the total that made
+    a $20 run look like it should have cost $5.
+    """
+    usage = response.get("usage")
+    if not usage:
+        return
+
+    UsageRecord.objects.create(
+        document=document,
+        chapter_number=chapter_number,
+        topic_title=topic_title[:255],
+        kind=kind,
+        model=usage.get("model", ""),
+        input_tokens=usage.get("input_tokens", 0),
+        cached_input_tokens=usage.get("cached_input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+    )
 
 
 def _mark_chapter(document: Document, chapter: Chapter) -> None:

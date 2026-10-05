@@ -11,6 +11,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     # this is a total that does not move while the run is going.
     chapters_total = serializers.SerializerMethodField()
     chapters_ready = serializers.SerializerMethodField()
+    # What this document has actually cost, from recorded usage rather than an
+    # estimate.
+    cost_usd = serializers.SerializerMethodField()
+    calls_made = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -26,6 +30,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             "topics_ready",
             "chapters_total",
             "chapters_ready",
+            "cost_usd",
+            "calls_made",
         ]
         read_only_fields = ["page_count", "status", "error", "created_at"]
 
@@ -40,6 +46,12 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_chapters_ready(self, document: Document) -> int:
         return self.context["chapter_ready"].get(document.id, 0)
+
+    def get_cost_usd(self, document: Document) -> float:
+        return round(self.context["spend"].get(document.id, 0.0), 4)
+
+    def get_calls_made(self, document: Document) -> int:
+        return self.context["calls"].get(document.id, 0)
 
 
 class DocumentUploadSerializer(serializers.ModelSerializer):

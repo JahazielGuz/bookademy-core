@@ -127,6 +127,16 @@ SERVICE_TOKEN = env("SERVICE_TOKEN", default="dev-only-change-me")
 # A 300-page book takes the model minutes, not seconds.
 AI_SERVICE_TIMEOUT_SECONDS = 600
 
+# US dollars per million tokens. Kept here rather than in code so a price change is a
+# config edit, and so a model missing from this table costs a visible $0.00 rather
+# than silently guessing.
+MODEL_PRICES = {
+    "gpt-5-mini": {"input": 0.25, "cached": 0.025, "output": 2.00},
+    "gpt-5-nano": {"input": 0.05, "cached": 0.005, "output": 0.40},
+    "gpt-5.1": {"input": 1.25, "cached": 0.125, "output": 10.00},
+    "gpt-4.1-mini": {"input": 0.40, "cached": 0.10, "output": 1.60},
+}
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
