@@ -283,7 +283,10 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
         )
 
         with transaction.atomic():
-            save_topic_content(topic, content)
+            # replace=True is safe and necessary here: this only ever runs for a
+            # topic that is not READY, so anything it overwrites is the leftovers of
+            # an attempt that did not finish. A finished topic never reaches this.
+            save_topic_content(topic, content, replace=True)
             topic.status = Topic.Status.READY
             topic.error = ""
             topic.save(update_fields=["status", "error"])

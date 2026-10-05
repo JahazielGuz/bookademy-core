@@ -19,14 +19,27 @@ from curriculum.models import (
 from documents.models import Document
 
 
-def save_structure(document: Document, data: dict[str, Any], language: str) -> Syllabus:
+class WouldDestroyContent(Exception):
+    """Refused to overwrite generated content that nobody asked to replace."""
+
+
+def save_structure(
+    document: Document, data: dict[str, Any], language: str, *, replace: bool = False
+) -> Syllabus:
     """Create the syllabus and its chapters from the document's own structure.
 
     No model produced any of this: the chapters, their titles and their page ranges
     come from the PDF's bookmarks. Topics are not created here — each chapter's are
     worked out when that chapter is reached.
     """
-    Syllabus.objects.filter(document=document).delete()
+    existing = Syllabus.objects.filter(document=document)
+    if existing.exists() and not replace:
+        raise WouldDestroyContent(
+            f"Document {document.pk} already has a syllabus. Replacing it would "
+            f"delete every chapter, topic, lesson and checkpoint under it. Pass "
+            f"replace=True if that is genuinely what you want."
+        )
+    existing.delete()
 
     chapters = data["chapters"]
     syllabus = Syllabus.objects.create(
@@ -51,9 +64,17 @@ def save_structure(document: Document, data: dict[str, Any], language: str) -> S
     return syllabus
 
 
-def save_topics(chapter: Chapter, topics: list[dict[str, Any]]) -> list[Topic]:
-    """Replace this chapter's topics. Safe to call again after a failed attempt."""
-    Topic.objects.filter(chapter=chapter).delete()
+def save_topics(
+    chapter: Chapter, topics: list[dict[str, Any]], *, replace: bool = False
+) -> list[Topic]:
+    """Write this chapter's topics. Refuses to overwrite topics that already exist."""
+    existing = Topic.objects.filter(chapter=chapter)
+    if existing.exists() and not replace:
+        raise WouldDestroyContent(
+            f"Chapter {chapter.number} already has {existing.count()} topics, with "
+            f"their lessons and exercises. Pass replace=True to discard them."
+        )
+    existing.delete()
 
     return [
         Topic.objects.create(
@@ -69,8 +90,22 @@ def save_topics(chapter: Chapter, topics: list[dict[str, Any]]) -> list[Topic]:
     ]
 
 
-def save_topic_content(topic: Topic, content: dict[str, Any]) -> None:
-    """Replace this topic's content. Safe to call again after a failed attempt."""
+def save_topic_content(topic: Topic, content: dict[str, Any], *, replace: bool = False) -> None:
+    """Write this topic's lesson, quiz and exercises.
+
+    Refuses to overwrite a topic that already has them — a finished topic is the
+    thing a learner may already have worked through, and its checkpoints carry their
+    completion records.
+    """
+    already = Lesson.objects.filter(topic=topic).exists() or Exercise.objects.filter(
+        topic=topic
+    ).exists()
+    if already and not replace:
+        raise WouldDestroyContent(
+            f"Topic {topic.pk} ({topic.title!r}) already has content. Pass "
+            f"replace=True to discard it."
+        )
+
     Lesson.objects.filter(topic=topic).delete()
     Quiz.objects.filter(topic=topic).delete()
     Exercise.objects.filter(topic=topic).delete()
