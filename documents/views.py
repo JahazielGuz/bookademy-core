@@ -6,7 +6,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from curriculum.models import Topic
+from curriculum.models import Chapter, Topic
 from documents.models import Document
 from documents.serializers import DocumentSerializer, DocumentUploadSerializer
 from documents.streaming import stream
@@ -24,12 +24,20 @@ def _progress_context(documents) -> dict:
                 filter=Q(syllabus__chapters__topics__status=Topic.Status.READY),
                 distinct=True,
             ),
+            chapters=Count("syllabus__chapters", distinct=True),
+            chapters_done=Count(
+                "syllabus__chapters",
+                filter=Q(syllabus__chapters__status=Chapter.Status.READY),
+                distinct=True,
+            ),
         )
-        .values_list("id", "total", "ready")
+        .values_list("id", "total", "ready", "chapters", "chapters_done")
     )
     return {
         "topic_totals": {row[0]: row[1] for row in rows},
         "topic_ready": {row[0]: row[2] for row in rows},
+        "chapter_totals": {row[0]: row[3] for row in rows},
+        "chapter_ready": {row[0]: row[4] for row in rows},
     }
 
 
