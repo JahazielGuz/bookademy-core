@@ -29,6 +29,7 @@ from curriculum.builders import save_structure, save_topic_content, save_topics
 from curriculum.models import Chapter, Topic
 from documents import events
 from documents.language import detect_language
+from documents.locks import document_run, keep_held
 from documents.models import Document
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,20 @@ class NoOutline(Exception):
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def process_document(self, document_id: int) -> None:
+    """Generate one book, once.
+
+    The lock is the whole point of the wrapper: Celery redelivers a task it thinks
+    was lost, and a run longer than the broker's visibility timeout looks exactly
+    like a lost one. A redelivered copy finds the document already held and returns
+    without spending anything.
+    """
+    with document_run(document_id) as token:
+        if token is None:
+            return
+        _generate(self, document_id, token)
+
+
+def _generate(task, document_id: int, token: str) -> None:
     document = Document.objects.get(pk=document_id)
 
     try:
@@ -53,14 +68,26 @@ def process_document(self, document_id: int) -> None:
         _fail(document, str(exc))
         return
     except AIServiceError as exc:
-        if self.request.retries >= self.max_retries:
+        if task.request.retries >= task.max_retries:
             _fail(document, str(exc))
             return
-        raise self.retry(exc=exc) from exc
+        raise task.retry(exc=exc) from exc
 
+    # One chapter at a time, in order. Topics run concurrently inside a chapter and
+    # nowhere else: chapter two must not start while chapter one is unfinished, or
+    # the syllabus stops filling in from the top and the ordering guarantee is lost.
     chapters = list(syllabus.chapters.all())
     for chapter in chapters:
         _write_chapter(document, chapter)
+        # Push the expiry back now rather than on a timer: a chapter is the longest
+        # this run goes without a natural checkpoint.
+        if not keep_held(document.pk, token):
+            logger.error(
+                "lost the run lock for document %s part way through; stopping rather "
+                "than racing whoever holds it now",
+                document.pk,
+            )
+            return
 
     _settle(document, len(chapters))
 

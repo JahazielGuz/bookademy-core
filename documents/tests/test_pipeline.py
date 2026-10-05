@@ -220,3 +220,63 @@ def test_the_event_log_tells_the_story_in_order(uploaded, stubbed_ai):
         (GenerationEvent.Kind.CHAPTER_STARTED, 2),
         (GenerationEvent.Kind.CHAPTER_READY, 2),
     ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_redelivered_run_spends_nothing(uploaded, stubbed_ai):
+    """The expensive bug, pinned.
+
+    Celery redelivers a task it believes was lost, and a run longer than the broker's
+    visibility timeout looks exactly like one. Without the lock the redelivered copy
+    restarts from chapter one alongside the original. This asserts the second copy
+    makes no model calls at all.
+    """
+    from documents.locks import document_run
+
+    with document_run(uploaded.id) as held:
+        assert held is not None
+        process_document.apply(args=[uploaded.id])
+
+    assert stubbed_ai["topics"] == []
+    assert stubbed_ai["content"] == []
+    uploaded.refresh_from_db()
+    assert uploaded.status == Document.Status.PENDING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_run_takes_and_frees_its_own_lock(uploaded, stubbed_ai):
+    """And having stood down once, a later run still works."""
+    process_document.apply(args=[uploaded.id])
+    uploaded.refresh_from_db()
+    assert uploaded.status == Document.Status.READY
+
+    from documents.locks import document_run
+
+    with document_run(uploaded.id) as token:
+        assert token is not None, "the finished run did not release its lock"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_only_one_chapter_is_in_flight_at_a_time(uploaded, stubbed_ai):
+    """Topics parallelise inside a chapter; chapters never overlap, or the syllabus
+    stops filling in from the top."""
+    seen: list[int] = []
+
+    original = stubbed_ai
+    import documents.tasks as tasks
+
+    real = tasks.request_topic_content
+
+    def recording(payload):
+        seen.append(payload["chapter_number"])
+        return real(payload)
+
+    tasks.request_topic_content = recording
+    try:
+        process_document.apply(args=[uploaded.id])
+    finally:
+        tasks.request_topic_content = real
+
+    # Every call for chapter 1 precedes every call for chapter 2.
+    assert seen == sorted(seen), f"chapters interleaved: {seen}"
+    del original
