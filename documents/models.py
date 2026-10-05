@@ -67,3 +67,57 @@ class GenerationEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.message[:60]}"
+
+
+class UsageRecord(models.Model):
+    """What one generation call consumed, and what it cost.
+
+    Recorded because the alternative is arithmetic, and arithmetic is how this
+    project predicted $5 and spent $20. Every call is stored, including the ones that
+    produced nothing useful, so the total is what was actually billed rather than what
+    the surviving content suggests.
+    """
+
+    class Kind(models.TextChoices):
+        TOPICS = "topics", "Working out a chapter's topics"
+        CONTENT = "content", "Writing a topic"
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="usage")
+    chapter_number = models.PositiveIntegerField(null=True, blank=True)
+    topic_title = models.CharField(max_length=255, blank=True)
+
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    model = models.CharField(max_length=64)
+
+    input_tokens = models.PositiveIntegerField()
+    cached_input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["document", "id"])]
+
+    @property
+    def cost_usd(self) -> float:
+        """Priced from the table in settings.
+
+        Cached input is billed separately and far cheaper, so it is counted
+        separately — folding it into input would overstate every total.
+        """
+        from django.conf import settings
+
+        prices = settings.MODEL_PRICES.get(self.model)
+        if prices is None:
+            return 0.0
+
+        fresh_input = max(0, self.input_tokens - self.cached_input_tokens)
+        return (
+            fresh_input * prices["input"]
+            + self.cached_input_tokens * prices["cached"]
+            + self.output_tokens * prices["output"]
+        ) / 1_000_000
+
+    def __str__(self) -> str:
+        return f"{self.kind} on {self.model}: ${self.cost_usd:.4f}"

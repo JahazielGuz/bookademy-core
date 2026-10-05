@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from curriculum.models import Chapter, Topic
-from documents.models import Document
+from documents.models import Document, UsageRecord
 from documents.serializers import DocumentSerializer, DocumentUploadSerializer
 from documents.streaming import stream
 from documents.tasks import process_document
@@ -33,11 +33,21 @@ def _progress_context(documents) -> dict:
         )
         .values_list("id", "total", "ready", "chapters", "chapters_done")
     )
+    # Cost is summed in Python rather than SQL because the price depends on the
+    # model each call used. One query for all of them, not one per document.
+    spend: dict[int, float] = {}
+    calls: dict[int, int] = {}
+    for record in UsageRecord.objects.filter(document__in=[d.id for d in documents]):
+        spend[record.document_id] = spend.get(record.document_id, 0.0) + record.cost_usd
+        calls[record.document_id] = calls.get(record.document_id, 0) + 1
+
     return {
         "topic_totals": {row[0]: row[1] for row in rows},
         "topic_ready": {row[0]: row[2] for row in rows},
         "chapter_totals": {row[0]: row[3] for row in rows},
         "chapter_ready": {row[0]: row[4] for row in rows},
+        "spend": spend,
+        "calls": calls,
     }
 
 
