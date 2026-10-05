@@ -76,3 +76,12 @@ def done(document: Document, chapters: int) -> None:
         GenerationEvent.Kind.DONE,
         f"All {chapters} chapters are ready.",
     )
+
+
+def budget_exhausted(document: Document, spent: float, limit: float) -> None:
+    record(
+        document,
+        GenerationEvent.Kind.FAILED,
+        f"Stopped at the ${limit:.2f} limit for this book, having spent ${spent:.2f}. "
+        f"Everything written so far is kept.",
+    )

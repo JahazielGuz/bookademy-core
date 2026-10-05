@@ -15,6 +15,8 @@ class DocumentSerializer(serializers.ModelSerializer):
     # estimate.
     cost_usd = serializers.SerializerMethodField()
     calls_made = serializers.SerializerMethodField()
+    # So the page can show spend against its ceiling rather than a bare number.
+    spend_limit_usd = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -32,6 +34,7 @@ class DocumentSerializer(serializers.ModelSerializer):
             "chapters_ready",
             "cost_usd",
             "calls_made",
+            "spend_limit_usd",
         ]
         read_only_fields = ["page_count", "status", "error", "created_at"]
 
@@ -52,6 +55,11 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def get_calls_made(self, document: Document) -> int:
         return self.context["calls"].get(document.id, 0)
+
+    def get_spend_limit_usd(self, document: Document) -> float:
+        from django.conf import settings
+
+        return settings.DOCUMENT_SPEND_LIMIT_USD
 
 
 class DocumentUploadSerializer(serializers.ModelSerializer):
