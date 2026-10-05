@@ -113,6 +113,12 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # registry ("not enough values to unpack") and the task dies before any of its code
 # runs, leaving the document stuck in `pending` with no error to show.
 CELERY_WORKER_POOL = "threads"
+
+# Redis redelivers any task still unacknowledged after this long, and with acks_late
+# a generation run is unacknowledged for its whole duration. At the default of one
+# hour a long book was redelivered every hour and restarted from chapter one, running
+# alongside itself. The document lock makes that harmless; this makes it rare.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 6 * 3600}
 CELERY_WORKER_CONCURRENCY = 4
 
 AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8001")
