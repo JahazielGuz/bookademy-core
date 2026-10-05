@@ -338,3 +338,48 @@ def test_a_topic_is_sent_its_own_pages_not_its_chapter(uploaded, monkeypatch):
     assert "PAGE_20_CONTENT" in sent["chapter"]["text"]
 
     assert len(topic_text) < len(sent["chapter"]["text"]) / 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_chapter_text_carries_real_page_numbers(uploaded, stubbed_ai):
+    """Without them the model counts from one.
+
+    A chapter starting on page 28 then produces topics claiming pages 1-3, and every
+    one of those topics is later sent the book's front matter instead of its own
+    content — silently, because the text that arrives is still perfectly readable.
+    """
+    process_document.apply(args=[uploaded.id])
+
+    second = stubbed_ai["topics"][1]
+    assert "<!-- page 3 -->" in second["text"]
+    assert "<!-- page 4 -->" in second["text"]
+    assert second["page_start"] == 3
+    assert second["page_end"] == 4
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_topic_cannot_point_outside_its_chapter(uploaded, monkeypatch):
+    """A backstop for a model that ignores the page markers: being imprecise inside
+    the chapter is survivable, pointing at another part of the book is not."""
+    out_of_range = {
+        "topics": [
+            {
+                "title": "A topic with nonsense pages",
+                "summary": "s",
+                "key_points": ["k"],
+                "page_start": 1,
+                "page_end": 999,
+            }
+        ]
+    }
+    monkeypatch.setattr("documents.tasks.read_document", lambda **kwargs: DOCUMENT)
+    monkeypatch.setattr("documents.tasks.chapter_topics", lambda p: out_of_range)
+    monkeypatch.setattr("documents.tasks.request_topic_content", lambda p: CONTENT)
+
+    process_document.apply(args=[uploaded.id])
+
+    from curriculum.models import Topic
+
+    topic = Topic.objects.filter(chapter__number=2).first()
+    assert topic.page_start >= 3
+    assert topic.page_end <= 4

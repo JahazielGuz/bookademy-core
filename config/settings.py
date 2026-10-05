@@ -131,6 +131,8 @@ AI_SERVICE_TIMEOUT_SECONDS = 600
 # config edit, and so a model missing from this table costs a visible $0.00 rather
 # than silently guessing.
 MODEL_PRICES = {
+    "gpt-4o-mini": {"input": 0.15, "cached": 0.075, "output": 0.60},
+    "gpt-4o": {"input": 2.50, "cached": 1.25, "output": 10.00},
     "gpt-5-mini": {"input": 0.25, "cached": 0.025, "output": 2.00},
     "gpt-5-nano": {"input": 0.05, "cached": 0.005, "output": 0.40},
     "gpt-5.1": {"input": 1.25, "cached": 0.125, "output": 10.00},

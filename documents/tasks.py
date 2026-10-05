@@ -136,16 +136,29 @@ def _prepare(document: Document):
 TOPIC_MARGIN_PAGES = 1
 
 
-def _slice(document: Document, first_page: int, last_page: int) -> str:
+def _slice(document: Document, first_page: int, last_page: int, *, mark_pages: bool = False) -> str:
+    """Pages `first_page` to `last_page`, 1-indexed and inclusive.
+
+    `mark_pages` prefixes each page with its real number in the book. The topics call
+    needs it: it is asked to give each topic a page range, and without the numbers in
+    the text it can only count from one. A chapter starting on page 28 then produces
+    topics claiming pages 1-3, and every one of them is later sent the book's front
+    matter instead of its own content.
+    """
     pages = document.pages or []
     start = max(0, first_page - 1)
     end = min(len(pages), last_page)
-    return "\n\n".join(pages[start:end])
+    if not mark_pages:
+        return "\n\n".join(pages[start:end])
+    return "\n\n".join(
+        f"<!-- page {number} -->\n{page}"
+        for number, page in enumerate(pages[start:end], start=start + 1)
+    )
 
 
 def chapter_text(document: Document, chapter: Chapter) -> str:
-    """The chapter's own pages. Sent once per chapter, to work out its topics."""
-    return _slice(document, chapter.page_start, chapter.page_end)
+    """The chapter's own pages, each marked with its real page number."""
+    return _slice(document, chapter.page_start, chapter.page_end, mark_pages=True)
 
 
 def topic_text(document: Document, topic: Topic) -> str:
@@ -182,6 +195,8 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
                     "language": language,
                     "chapter_number": chapter.number,
                     "chapter_title": chapter.title,
+                    "page_start": chapter.page_start,
+                    "page_end": chapter.page_end,
                     "text": text,
                     "headings": chapter.headings,
                 }
@@ -201,7 +216,7 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
             kind=UsageRecord.Kind.TOPICS,
             chapter_number=chapter.number,
         )
-        existing = save_topics(chapter, response["topics"])
+        existing = save_topics(chapter, _within(chapter, response["topics"]))
 
     events.chapter_started(document, chapter.number, chapter.title, len(existing))
 
@@ -273,6 +288,20 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
         return False
     finally:
         close_old_connections()
+
+
+def _within(chapter: Chapter, topics: list[dict]) -> list[dict]:
+    """Keep every topic's pages inside its chapter.
+
+    A backstop rather than a correction: the page markers in the text are what make
+    the model get this right, and this makes a wrong answer merely imprecise instead
+    of pointing at another part of the book entirely.
+    """
+    for topic in topics:
+        start = min(max(topic["page_start"], chapter.page_start), chapter.page_end)
+        end = min(max(topic["page_end"], start), chapter.page_end)
+        topic["page_start"], topic["page_end"] = start, end
+    return topics
 
 
 def _record_usage(
