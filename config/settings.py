@@ -127,6 +127,11 @@ SERVICE_TOKEN = env("SERVICE_TOKEN", default="dev-only-change-me")
 # A 300-page book takes the model minutes, not seconds.
 AI_SERVICE_TIMEOUT_SECONDS = 600
 
+# The most one book may cost before its run stops itself. Checked before each model
+# call against what the document has already been billed, so a run overshoots by at
+# most the call in flight. Set to 0 to remove the ceiling.
+DOCUMENT_SPEND_LIMIT_USD = 2.00
+
 # US dollars per million tokens. Kept here rather than in code so a price change is a
 # config edit, and so a model missing from this table costs a visible $0.00 rather
 # than silently guessing.

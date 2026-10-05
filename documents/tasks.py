@@ -31,6 +31,7 @@ from documents import events
 from documents.language import detect_language
 from documents.locks import document_run, keep_held
 from documents.models import Document, UsageRecord
+from documents.spend import SpendLimitReached, check_budget, spent_on
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,11 @@ def _generate(task, document_id: int, token: str) -> None:
     # the syllabus stops filling in from the top and the ordering guarantee is lost.
     chapters = list(syllabus.chapters.all())
     for chapter in chapters:
-        _write_chapter(document, chapter)
+        try:
+            _write_chapter(document, chapter)
+        except SpendLimitReached as exc:
+            _halt(document, exc)
+            return
         # Push the expiry back now rather than on a timer: a chapter is the longest
         # this run goes without a natural checkpoint.
         if not keep_held(document.pk, token):
@@ -189,6 +194,7 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
 
     existing = list(chapter.topics.all())
     if not existing:
+        check_budget(document)
         try:
             response = chapter_topics(
                 {
@@ -250,6 +256,9 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
     """
     close_old_connections()
     try:
+        # Checked per topic rather than per chapter: a chapter can hold a dozen of
+        # these, and stopping at the chapter boundary would overshoot by all of them.
+        check_budget(document)
         topic.status = Topic.Status.GENERATING
         topic.save(update_fields=["status"])
 
@@ -280,6 +289,9 @@ def _write_topic(document: Document, topic: Topic, language: str) -> bool:
             topic.save(update_fields=["status", "error"])
         return True
 
+    except SpendLimitReached:
+        # Leave the topic untouched so a later run with a raised ceiling picks it up.
+        raise
     except (AIServiceError, AIServiceRefused) as exc:
         logger.warning("topic %s failed: %s", topic.pk, exc)
         topic.status = Topic.Status.FAILED
@@ -302,6 +314,21 @@ def _within(chapter: Chapter, topics: list[dict]) -> list[dict]:
         end = min(max(topic["page_end"], start), chapter.page_end)
         topic["page_start"], topic["page_end"] = start, end
     return topics
+
+
+def _halt(document: Document, reason: SpendLimitReached) -> None:
+    """Stop the run at its ceiling, keeping everything already written.
+
+    Not treated as a failure of the document: chapters already finished are complete
+    and usable, and the library still offers them. What failed is the budget, and the
+    message says so and says what to change.
+    """
+    logger.warning("document %s hit its spend limit: %s", document.pk, reason)
+    events.budget_exhausted(document, spent=reason.spent, limit=reason.limit)
+
+    document.status = Document.Status.FAILED
+    document.error = str(reason)
+    document.save(update_fields=["status", "error", "updated_at"])
 
 
 def _record_usage(
