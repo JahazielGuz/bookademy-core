@@ -76,37 +76,18 @@ def save_topics(
         )
     existing.delete()
 
-    # Each returned topic becomes two items: the lesson, and the quiz that tests it.
-    # Created together and interleaved, so positions are settled up front rather than
-    # inserted into later — which would mean renumbering everything after them.
-    lessons: list[Topic] = []
-    position = 0
-    for topic in topics:
-        position += 1
-        lessons.append(
-            Topic.objects.create(
-                chapter=chapter,
-                position=position,
-                kind=Topic.Kind.LESSON,
-                title=topic["title"],
-                summary=topic["summary"],
-                key_points=topic["key_points"],
-                page_start=topic["page_start"],
-                page_end=topic["page_end"],
-            )
-        )
-        position += 1
+    return [
         Topic.objects.create(
             chapter=chapter,
             position=position,
-            kind=Topic.Kind.QUIZ,
             title=topic["title"],
-            summary=f"Check what you took from {topic['title']}.",
+            summary=topic["summary"],
             key_points=topic["key_points"],
             page_start=topic["page_start"],
             page_end=topic["page_end"],
         )
-    return lessons
+        for position, topic in enumerate(topics, start=1)
+    ]
 
 
 def save_topic_content(topic: Topic, content: dict[str, Any], *, replace: bool = False) -> None:
@@ -134,15 +115,7 @@ def save_topic_content(topic: Topic, content: dict[str, Any], *, replace: bool =
         topic=topic, title=lesson["title"], body_markdown=lesson["body_markdown"]
     )
 
-    # The quiz belongs to the quiz item that follows this lesson, not to the lesson.
-    quiz_topic = (
-        Topic.objects.filter(
-            chapter=topic.chapter, kind=Topic.Kind.QUIZ, position=topic.position + 1
-        ).first()
-        or topic
-    )
-    Quiz.objects.filter(topic=quiz_topic).delete()
-    quiz = Quiz.objects.create(topic=quiz_topic)
+    quiz = Quiz.objects.create(topic=topic)
     for position, question in enumerate(content["quiz"]["questions"], start=1):
         Question.objects.create(
             quiz=quiz,
@@ -152,11 +125,6 @@ def save_topic_content(topic: Topic, content: dict[str, Any], *, replace: bool =
             correct_index=question["correct_index"],
             explanation=question["explanation"],
         )
-
-    if quiz_topic is not topic:
-        quiz_topic.status = Topic.Status.READY
-        quiz_topic.error = ""
-        quiz_topic.save(update_fields=["status", "error"])
 
     for position, exercise_data in enumerate(content["exercises"], start=1):
         exercise = Exercise.objects.create(

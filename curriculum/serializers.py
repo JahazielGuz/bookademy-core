@@ -91,7 +91,6 @@ class TopicDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "position",
-            "kind",
             "title",
             "summary",
             "key_points",
@@ -119,7 +118,6 @@ class TopicSummarySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "position",
-            "kind",
             "title",
             "summary",
             "status",

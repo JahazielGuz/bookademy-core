@@ -118,9 +118,7 @@ def test_the_whole_run_completes(uploaded, stubbed_ai):
     assert uploaded.status == Document.Status.READY
     assert uploaded.page_count == 4
     assert Chapter.objects.count() == 2
-    # One lesson and one quiz per topic the outline returned.
-    assert Topic.objects.filter(kind=Topic.Kind.LESSON, status=Topic.Status.READY).count() == 2
-    assert Topic.objects.filter(kind=Topic.Kind.QUIZ, status=Topic.Status.READY).count() == 2
+    assert Topic.objects.filter(status=Topic.Status.READY).count() == 2
 
 
 @pytest.mark.django_db(transaction=True)
