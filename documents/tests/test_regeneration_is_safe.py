@@ -92,11 +92,7 @@ def test_the_identical_checkpoints_survive(generated, stubbed_ai):
 def test_a_gap_is_filled_without_touching_the_rest(generated, stubbed_ai):
     """Resuming is still possible: an unfinished topic is completed, and everything
     already written is left exactly as it was."""
-    # A lesson, because only lessons are generated — a quiz item is filled by the
-    # call for the lesson it follows.
-    gap = Topic.objects.filter(
-        kind=Topic.Kind.LESSON, status=Topic.Status.READY
-    ).last()
+    gap = Topic.objects.filter(status=Topic.Status.READY).last()
     survivors = {(s.id, s.expected_code) for s in ExerciseStep.objects.exclude(exercise__topic=gap)}
 
     gap.status = Topic.Status.PENDING
