@@ -78,10 +78,24 @@ class LessonSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "body_markdown"]
 
 
+class ItemLinkSerializer(serializers.Serializer):
+    """Where Next and Back go: a topic, and which half of it."""
+
+    topic_id = serializers.IntegerField()
+    part = serializers.CharField()
+
+
 class TopicDetailSerializer(serializers.ModelSerializer):
     lesson = LessonSerializer(read_only=True)
     quiz = QuizSerializer(read_only=True)
     exercises = ExerciseSerializer(many=True, read_only=True)
+    # Whether each half is finished, so the page knows when Next may be used.
+    lesson_complete = serializers.SerializerMethodField()
+    quiz_passed = serializers.SerializerMethodField()
+    # The neighbours of each half, walked over the whole syllabus.
+    lesson_links = serializers.SerializerMethodField()
+    quiz_links = serializers.SerializerMethodField()
+
     chapter_number = serializers.IntegerField(source="chapter.number", read_only=True)
     chapter_title = serializers.CharField(source="chapter.title", read_only=True)
     document_id = serializers.IntegerField(source="chapter.syllabus.document_id", read_only=True)
@@ -99,10 +113,44 @@ class TopicDetailSerializer(serializers.ModelSerializer):
             "chapter_number",
             "chapter_title",
             "document_id",
+            "lesson_complete",
+            "quiz_passed",
+            "lesson_links",
+            "quiz_links",
             "lesson",
             "quiz",
             "exercises",
         ]
+
+
+    def get_lesson_complete(self, topic) -> bool:
+        """Every checkpoint of every exercise passed."""
+        done = self.context["completed_step_ids"]
+        steps = [s for e in topic.exercises.all() for s in e.steps.all()]
+        return bool(steps) and all(step.id in done for step in steps)
+
+    def get_quiz_passed(self, topic) -> bool:
+        quiz = getattr(topic, "quiz", None)
+        if quiz is None:
+            return False
+        best = self.context["best_quiz_scores"].get(quiz.id)
+        return best is not None and best == quiz.questions.count() and best > 0
+
+    def get_lesson_links(self, topic) -> dict:
+        return _links(topic, "lesson")
+
+    def get_quiz_links(self, topic) -> dict:
+        return _links(topic, "quiz")
+
+
+def _links(topic, part):
+    from curriculum.navigation import neighbours
+
+    before, after = neighbours(topic, part)
+    return {
+        "previous": ItemLinkSerializer(before).data if before else None,
+        "next": ItemLinkSerializer(after).data if after else None,
+    }
 
 
 class TopicSummarySerializer(serializers.ModelSerializer):
