@@ -60,8 +60,20 @@ class Chapter(models.Model):
 
 
 class Topic(models.Model):
-    """A teachable idea. Content is generated per topic, so status lives here and
-    the syllabus can render with some topics ready and others still being written."""
+    """One item of a course, and exactly one kind of thing.
+
+    A lesson is reading plus typed exercises and needs the editor beside it. A quiz is
+    questions, one at a time, and needs the whole page. Trying to be both at once put a
+    quiz at the bottom of a lesson with a code editor sitting uselessly beside it, so
+    they are separate items that happen to sit next to each other in a chapter.
+
+    Content is generated per topic, so status lives here and the syllabus can render
+    with some topics ready and others still being written.
+    """
+
+    class Kind(models.TextChoices):
+        LESSON = "lesson", "Lesson"
+        QUIZ = "quiz", "Quiz"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Waiting"
@@ -71,6 +83,7 @@ class Topic(models.Model):
 
     chapter = models.ForeignKey(Chapter, on_delete=models.CASCADE, related_name="topics")
     position = models.PositiveIntegerField()
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.LESSON)
     title = models.CharField(max_length=255)
     summary = models.TextField()
     key_points = models.JSONField(default=list)
