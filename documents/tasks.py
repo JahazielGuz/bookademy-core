@@ -226,7 +226,13 @@ def _write_chapter(document: Document, chapter: Chapter) -> None:
 
     events.chapter_started(document, chapter.number, chapter.title, len(existing))
 
-    pending = [topic for topic in existing if topic.status != Topic.Status.READY]
+    # Only lessons are generated. A quiz item is written by the call for the lesson
+    # it follows, so asking for it separately would pay twice for the same content.
+    pending = [
+        topic
+        for topic in existing
+        if topic.status != Topic.Status.READY and topic.kind == Topic.Kind.LESSON
+    ]
     total = len(existing)
 
     with ThreadPoolExecutor(max_workers=TOPIC_CONCURRENCY) as pool:
