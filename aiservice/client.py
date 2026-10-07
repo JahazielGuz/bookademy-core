@@ -41,6 +41,10 @@ def read_document(*, filename: str, content: bytes) -> dict[str, Any]:
     return _post("/v1/documents", files={"file": (filename, content, "application/pdf")})
 
 
+def overview(payload: dict[str, Any]) -> dict[str, Any]:
+    return _post("/v1/overview", json=payload)
+
+
 def chapter_topics(payload: dict[str, Any]) -> dict[str, Any]:
     return _post("/v1/chapter-topics", json=payload)
 

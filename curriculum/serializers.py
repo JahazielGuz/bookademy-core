@@ -216,4 +216,13 @@ class SyllabusSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Syllabus
-        fields = ["id", "title", "subject", "description", "language", "chapters"]
+        fields = [
+            "id",
+            "title",
+            "subject",
+            "description",
+            "summary",
+            "outcomes",
+            "language",
+            "chapters",
+        ]
