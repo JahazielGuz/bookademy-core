@@ -18,6 +18,11 @@ class Syllabus(models.Model):
     description = models.TextField()
     language = models.CharField(max_length=16, choices=Language.choices)
 
+    # What a learner reads before deciding to start. Blank on anything generated
+    # before this existed, so the page falls back to the description.
+    summary = models.TextField(blank=True)
+    outcomes = models.JSONField(default=list, blank=True)
+
     class Meta:
         verbose_name_plural = "syllabi"
 

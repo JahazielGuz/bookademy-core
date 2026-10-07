@@ -24,6 +24,7 @@ from celery import shared_task
 from django.db import close_old_connections, transaction
 
 from aiservice.client import AIServiceError, AIServiceRefused, chapter_topics, read_document
+from aiservice.client import overview as request_overview
 from aiservice.client import topic_content as request_topic_content
 from curriculum.builders import save_structure, save_topic_content, save_topics
 from curriculum.models import Chapter, Topic
@@ -132,8 +133,42 @@ def _prepare(document: Document):
         document.status = Document.Status.GENERATING
         document.save(update_fields=["status", "updated_at"])
 
+    _write_overview(document, syllabus)
+
     events.syllabus_ready(document, len(data["chapters"]), 0)
     return syllabus
+
+
+# The opening pages, where a preface states what the book is for. Capped again on the
+# service's side; this keeps the request itself small.
+OVERVIEW_PAGES = 12
+
+
+def _write_overview(document: Document, syllabus) -> None:
+    """The two sentences shown above the syllabus.
+
+    Best-effort on purpose. It is the cheapest call in the run and the least load
+    bearing: a course missing its blurb is still a course, and failing the whole
+    document over one is not a trade worth making.
+    """
+    try:
+        check_budget(document)
+        response = request_overview(
+            {
+                "language": syllabus.language,
+                "title": syllabus.title,
+                "chapter_titles": [chapter.title for chapter in syllabus.chapters.all()],
+                "opening_text": _slice(document, 1, OVERVIEW_PAGES),
+            }
+        )
+    except (AIServiceError, AIServiceRefused, SpendLimitReached) as exc:
+        logger.warning("no overview for document %s: %s", document.pk, exc)
+        return
+
+    _record_usage(document, response, kind=UsageRecord.Kind.OVERVIEW)
+    syllabus.summary = response.get("summary", "")
+    syllabus.outcomes = response.get("outcomes", [])
+    syllabus.save(update_fields=["summary", "outcomes"])
 
 
 # A page either side of a topic, so a sentence or a code listing that straddles the

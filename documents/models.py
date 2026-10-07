@@ -79,6 +79,7 @@ class UsageRecord(models.Model):
     """
 
     class Kind(models.TextChoices):
+        OVERVIEW = "overview", "Summarising the book"
         TOPICS = "topics", "Working out a chapter's topics"
         CONTENT = "content", "Writing a topic"
 
