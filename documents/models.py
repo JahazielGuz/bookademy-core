@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 
 class Document(models.Model):
@@ -122,3 +124,17 @@ class UsageRecord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} on {self.model}: ${self.cost_usd:.4f}"
+
+
+@receiver(post_delete, sender=Document)
+def remove_uploaded_file(sender, instance: "Document", **kwargs) -> None:
+    """Take the PDF with the row.
+
+    Django deletes the row and leaves the file, so a library someone has cleared out
+    still holds every book they uploaded. post_delete rather than an override because
+    a queryset delete does not call the model's own delete().
+
+    save=False: the row is already gone, and saving it back would resurrect it.
+    """
+    if instance.file:
+        instance.file.delete(save=False)
