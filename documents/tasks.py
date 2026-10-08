@@ -21,6 +21,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from celery import shared_task
+from celery.exceptions import Retry
 from django.db import close_old_connections, transaction
 
 from aiservice.client import AIServiceError, AIServiceRefused, chapter_topics, read_document
@@ -58,8 +59,33 @@ def process_document(self, document_id: int) -> None:
         _generate(self, document_id, token)
 
 
+# What a learner is shown when something failed that nobody wrote a message for.
+# The exception itself is in the log with a timestamp; a database constraint quoted
+# verbatim on a library row tells them nothing they can act on.
+UNEXPECTED_UPLOAD = "Book upload failed. See the server log for what went wrong."
+UNEXPECTED_GENERATION = "Book generation failed. See the server log for what went wrong."
+
+
 def _generate(task, document_id: int, token: str) -> None:
     document = Document.objects.get(pk=document_id)
+    try:
+        _run(task, document, token)
+    except Retry:
+        # task.retry() signals by raising. Swallowing it would turn a retry into a
+        # failure.
+        raise
+    except Exception:
+        # Anything nobody anticipated. Without this the exception leaves the task and
+        # never touches the row, so the document keeps whatever working status it had
+        # and the library spins on it for ever — which is exactly what an IntegrityError
+        # from a stale worker did: twelve minutes of "working" and an empty error field.
+        logger.exception("document %s failed unexpectedly", document.pk)
+        started = hasattr(document, "syllabus")
+        _fail(document, UNEXPECTED_GENERATION if started else UNEXPECTED_UPLOAD)
+
+
+def _run(task, document: Document, token: str) -> None:
+    document_id = document.pk
 
     try:
         syllabus = _prepare(document)

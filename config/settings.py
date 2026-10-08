@@ -144,9 +144,20 @@ MODEL_PRICES = {
     "gpt-4.1-mini": {"input": 0.40, "cached": 0.10, "output": 1.60},
 }
 
+# Timestamped on purpose. The default format is the bare message, so a task that
+# failed at 02:20 and a document that stopped updating at 02:20 could not be tied
+# together from the log — which is the one question a failure log has to answer.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "formatters": {
+        "stamped": {
+            "format": "{asctime} {levelname:<8} {name} {message}",
+            "style": "{",
+        }
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "stamped"}
+    },
     "root": {"handlers": ["console"], "level": "INFO"},
 }
