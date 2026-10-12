@@ -30,6 +30,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Serves the admin's CSS and JS straight from the app. There is no nginx in front
+    # of this and no bucket behind it, so without this the admin renders unstyled.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -80,6 +83,14 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
+
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -101,6 +112,15 @@ SIMPLE_JWT = {
 
 # bookademy-web is the only browser client; it calls this API from its server side.
 CORS_ALLOWED_ORIGINS = [env("WEB_ORIGIN", default="http://localhost:3000")]
+
+# Fly terminates TLS at its proxy and forwards the original scheme in this header.
+# Without it Django believes every request is plain HTTP and builds http:// redirects
+# that the proxy then refuses.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# The admin posts forms from whatever host it is served on, and Django 4+ requires
+# that host to be named here or every POST is rejected as a CSRF failure.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 CELERY_BROKER_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL

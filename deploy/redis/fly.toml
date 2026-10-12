@@ -1,0 +1,33 @@
+app = "bookademy-redis"
+primary_region = "iad"
+
+# The Celery broker. Its own app rather than a process inside bookademy-core,
+# because a deploy of the application would otherwise restart the broker and drop
+# whatever was queued — a generation run would die on every deploy.
+#
+# No http_service: nothing reaches this over the public internet. Only machines in
+# the same Fly organisation can resolve bookademy-redis.flycast.
+
+[build]
+  image = "redis:7-alpine"
+
+[[mounts]]
+  source = "redis_data"
+  destination = "/data"
+
+[[services]]
+  internal_port = 6379
+  protocol = "tcp"
+  # Never auto-stops. A broker that sleeps is a queue that stops draining, and
+  # nothing sends it an HTTP request that could wake it.
+  auto_start_machines = true
+  auto_stop_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 6379
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"
