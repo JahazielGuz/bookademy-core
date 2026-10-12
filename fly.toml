@@ -1,0 +1,53 @@
+app = "bookademy-core"
+primary_region = "iad"
+
+[build]
+
+[deploy]
+  # Runs once per deploy, before any machine takes traffic.
+  release_command = "python manage.py migrate --noinput"
+
+# Two process groups from one image: the same code, the same secrets, different
+# commands. They scale independently and deploy together.
+[processes]
+  app = "gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 120"
+  worker = "celery -A config worker --loglevel=info --pool=threads --concurrency=4"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "suspend"
+  # The only client is a Next.js server rendering pages, so a cold start here is a
+  # slow page rather than a slow row. Keep one awake.
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+    # Fly checks a machine at its private IP, so without this Django sees
+    # `Host: 172.19.x.x:8000`, rejects it as a DisallowedHost and the check fails on a
+    # perfectly healthy app. Sending the real hostname keeps ALLOWED_HOSTS strict
+    # instead of widening it to satisfy a health probe.
+    [http_service.checks.headers]
+      Host = "bookademy-core.fly.dev"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+  processes = ["app"]
+
+# The worker has no HTTP, so nothing can wake it: the Fly proxy never sees a request
+# for it. It must never auto-stop, or the queue silently stops draining. Measured
+# peak is ~200MB — it holds an uploaded PDF in memory while posting it on.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+  processes = ["worker"]

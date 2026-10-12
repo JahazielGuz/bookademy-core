@@ -12,6 +12,10 @@ dependencies = [
     "celery[redis]>=5.4",
     "httpx>=0.27",
     "django-environ>=0.11",
+    # Deployment: gunicorn serves the app, whitenoise serves Django admin's static
+    # files without a separate web server or bucket in front.
+    "gunicorn>=23.0",
+    "whitenoise>=6.8",
 ]
 
 [dependency-groups]

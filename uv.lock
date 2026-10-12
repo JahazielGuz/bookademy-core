@@ -115,8 +115,10 @@ dependencies = [
     { name = "django-environ" },
     { name = "djangorestframework" },
     { name = "djangorestframework-simplejwt" },
+    { name = "gunicorn" },
     { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "whitenoise" },
 ]
 
 [package.dev-dependencies]
@@ -134,8 +136,10 @@ requires-dist = [
     { name = "django-environ", specifier = ">=0.11" },
     { name = "djangorestframework", specifier = ">=3.15" },
     { name = "djangorestframework-simplejwt", specifier = ">=5.3" },
+    { name = "gunicorn", specifier = ">=23.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "whitenoise", specifier = ">=6.8" },
 ]
 
 [package.metadata.requires-dev]
@@ -385,6 +389,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a8/27/2874a325c11112066139769f7794afae238a07ce6adf96259f08fd37a9d7/djangorestframework_simplejwt-5.5.1.tar.gz", hash = "sha256:e72c5572f51d7803021288e2057afcbd03f17fe11d484096f40a460abc76e87f", size = 101265, upload-time = "2025-07-21T16:52:25.026Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/94/fdfb7b2f0b16cd3ed4d4171c55c1c07a2d1e3b106c5978c8ad0c15b4a48b/djangorestframework_simplejwt-5.5.1-py3-none-any.whl", hash = "sha256:2c30f3707053d384e9f315d11c2daccfcb548d4faa453111ca19a542b732e469", size = 107674, upload-time = "2025-07-21T16:52:07.493Z" },
+]
+
+[[package]]
+name = "gunicorn"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/8a/e4ef6ee11701b6cd64702848415ffb69eeff85cb388a3c6c7fe86f22f3f8/gunicorn-26.2.0.tar.gz", hash = "sha256:62b864895d9ebff0b2f9867ba04fe811c93121596540830c9c916d0769668447", size = 787921, upload-time = "2026-08-24T15:05:59.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/85/7522a52e5e2f42faf1a129113ab63e548c42e103e9af395b7bfe65e403e2/gunicorn-26.2.0-py3-none-any.whl", hash = "sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3", size = 228389, upload-time = "2026-08-24T15:05:57.67Z" },
 ]
 
 [[package]]
@@ -745,4 +758,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/12/ad/307b55d8e0a9484c48e8f78f40e9b9a4a9af0c9e2e1c5209ad6d5a09c77c/wcwidth-0.9.1-cp314-cp314t-win_amd64.whl", hash = "sha256:eab587e18e7cadf1a750b0098fc8bebfb62c125eb9306f2268f0443a282a3d78", size = 604398, upload-time = "2026-09-23T20:23:47.672Z" },
     { url = "https://files.pythonhosted.org/packages/36/f1/69566660f633e2a93df7dad7353761562e9f71bf8a5a7b1eb7f34793b45d/wcwidth-0.9.1-cp314-cp314t-win_arm64.whl", hash = "sha256:03cfca3dcbffa86564290fe3c9978a6191ba003e8ced7f7dbda315fcb3fbe725", size = 602291, upload-time = "2026-09-23T20:23:42.345Z" },
     { url = "https://files.pythonhosted.org/packages/96/a2/f06f2e0be4895e5943d358755b51968ace85774cf0a4cc42b4dafb793832/wcwidth-0.9.1-py3-none-any.whl", hash = "sha256:e0c3a1c45c5b9550c6919a4449e95f5b177f6e165786376981db8f1addae9b21", size = 300656, upload-time = "2026-09-23T20:23:20.674Z" },
+]
+
+[[package]]
+name = "whitenoise"
+version = "6.12.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/2a/55b3f3a4ec326cd077c1c3defeee656b9298372a69229134d930151acd01/whitenoise-6.12.0.tar.gz", hash = "sha256:f723ebb76a112e98816ff80fcea0a6c9b8ecde835f8ddda25df7a30a3c2db6ad", size = 26841, upload-time = "2026-02-27T00:05:42.028Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/eb/d5583a11486211f3ebd4b385545ae787f32363d453c19fffd81106c9c138/whitenoise-6.12.0-py3-none-any.whl", hash = "sha256:fc5e8c572e33ebf24795b47b6a7da8da3c00cff2349f5b04c02f28d0cc5a3cc2", size = 20302, upload-time = "2026-02-27T00:05:40.086Z" },
 ]
