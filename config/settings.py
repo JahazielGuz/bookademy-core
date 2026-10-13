@@ -84,15 +84,54 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Where an uploaded PDF goes.
+#
+# Locally, the disk: one process writes it and the same machine reads it back, and a
+# file you can open in Finder is easier to debug than one you cannot.
+#
+# Deployed, object storage, because the web process and the Celery worker are
+# separate machines. Django writes the upload on one and the worker opens it on the
+# other, so a local path there is a FileNotFoundError on every upload.
+#
+# Which one is in use is decided by whether credentials exist rather than by a
+# DEBUG flag, so a developer who sets them locally gets the deployed behaviour and
+# can reproduce a storage bug without deploying.
+USE_OBJECT_STORAGE = bool(env("AWS_ACCESS_KEY_ID", default=""))
+
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": (
+        {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": env("BUCKET_NAME", default=""),
+                "endpoint_url": env("AWS_ENDPOINT_URL_S3", default=""),
+                "region_name": env("AWS_REGION", default="auto"),
+                # Nothing public is ever served from this bucket; the only reader is
+                # the worker, holding credentials.
+                "default_acl": "private",
+                "querystring_auth": True,
+            },
+        }
+        if USE_OBJECT_STORAGE
+        else {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+    ),
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
     },
 }
 
-MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# The PDF is read exactly once, in _prepare: every later call slices Document.pages
+# out of the database instead. Keeping the original costs money in object storage
+# and buys nothing, so on remote storage it is deleted once the syllabus exists —
+# the point after which the run can never need to read it again.
+#
+# Off by default on local disk, where keeping the file is free and useful.
+DISCARD_UPLOAD_AFTER_READING = env.bool(
+    "DISCARD_UPLOAD_AFTER_READING", default=USE_OBJECT_STORAGE
+)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
