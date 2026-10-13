@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from celery import shared_task
 from celery.exceptions import Retry
+from django.conf import settings
 from django.db import close_old_connections, transaction
 
 from aiservice.client import AIServiceError, AIServiceRefused, chapter_topics, read_document
@@ -159,6 +160,11 @@ def _prepare(document: Document):
         document.status = Document.Status.GENERATING
         document.save(update_fields=["status", "updated_at"])
 
+    # Only now. _prepare returns early when a syllabus already exists, so once this
+    # row is committed the run can never re-enter the part that reads the file —
+    # which makes this the first moment the PDF is genuinely finished with.
+    _discard_upload(document)
+
     _write_overview(document, syllabus)
 
     events.syllabus_ready(document, len(data["chapters"]), 0)
@@ -195,6 +201,24 @@ def _write_overview(document: Document, syllabus) -> None:
     syllabus.summary = response.get("summary", "")
     syllabus.outcomes = response.get("outcomes", [])
     syllabus.save(update_fields=["summary", "outcomes"])
+
+
+def _discard_upload(document: Document) -> None:
+    """Delete the uploaded PDF once its text is in the database.
+
+    Every call after extraction slices Document.pages, so the original is dead
+    weight — and on object storage dead weight is a monthly bill for a 30MB file
+    nothing will open again.
+
+    Best-effort: the text is already saved and the course is about to be written, so
+    a storage backend having a bad minute is not a reason to fail the document.
+    """
+    if not settings.DISCARD_UPLOAD_AFTER_READING or not document.file:
+        return
+    try:
+        document.file.delete(save=True)
+    except Exception:
+        logger.warning("could not delete the upload for document %s", document.pk, exc_info=True)
 
 
 # A page either side of a topic, so a sentence or a code listing that straddles the

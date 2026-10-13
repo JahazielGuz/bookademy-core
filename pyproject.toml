@@ -16,6 +16,9 @@ dependencies = [
     # files without a separate web server or bucket in front.
     "gunicorn>=23.0",
     "whitenoise>=6.8",
+    # Uploaded PDFs go to object storage in production: the web process and the
+    # worker are separate machines and do not share a filesystem.
+    "django-storages[s3]>=1.14",
 ]
 
 [dependency-groups]
