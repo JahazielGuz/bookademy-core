@@ -183,8 +183,9 @@ CELERY_WORKER_CONCURRENCY = 4
 AI_SERVICE_URL = env("AI_SERVICE_URL", default="http://localhost:8001")
 SERVICE_TOKEN = env("SERVICE_TOKEN", default="dev-only-change-me")
 
-# A 300-page book takes the model minutes, not seconds.
-AI_SERVICE_TIMEOUT_SECONDS = 600
+# One topic on the local model is minutes of work: the model thinks before it writes,
+# at about twenty tokens a second, and shares the server with three other topics.
+AI_SERVICE_TIMEOUT_SECONDS = 3600
 
 # The most one book may cost before its run stops itself. Checked before each model
 # call against what the document has already been billed, so a run overshoots by at
@@ -195,6 +196,8 @@ DOCUMENT_SPEND_LIMIT_USD = 2.00
 # config edit, and so a model missing from this table costs a visible $0.00 rather
 # than silently guessing.
 MODEL_PRICES = {
+    # The local model. Free to run, and listed so the zero is a decision, not a gap.
+    "qwen3.8-27b": {"input": 0.0, "cached": 0.0, "output": 0.0},
     "gpt-4o-mini": {"input": 0.15, "cached": 0.075, "output": 0.60},
     "gpt-4o": {"input": 2.50, "cached": 1.25, "output": 10.00},
     "gpt-5-mini": {"input": 0.25, "cached": 0.025, "output": 2.00},
